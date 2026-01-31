@@ -82,7 +82,9 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
                      
                      if 'publication_date' in parsed:
                          st.session_state['pub_date_input'] = parsed['publication_date']
-                         
+                         # Flag to show user-friendly message
+                         st.session_state['show_date_msg'] = True
+                     
                      # 3. Authors
                      if 'authors' in parsed and parsed['authors']:
                          auths = parsed['authors']
@@ -153,15 +155,27 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
 
     st.markdown("---")
     
+    # --- Session State for Reset ---
+    if 'reset_counter' not in st.session_state:
+        st.session_state.reset_counter = 0
+
+    # Append reset_counter to keys to force widget recreation on reset
+    rk = str(st.session_state.reset_counter)
+
     # --- Common Fields ---
     col1, col2 = st.columns(2)
     with col1:
-        # Handling date logic: default is today? Or session state?
-        # If bibtex loaded, we have pub_date_input in state.
-        # But st.date_input default val arg is `value`.
-        # If key is present in state, `value` is ignored.
-        publication_date = st.date_input("Yayın Tarihi (Gün/Ay/Yıl)", value=date.today(), key='pub_date_input')
-        title = st.text_input("Başlık (Makale/Kitap/Bölüm/Proje Adı)", key='title_input')
+        # Handling date logic
+        # Fix Streamlit Warning by ensuring 'value' matches session_state if present
+        default_date = st.session_state.get('pub_date_input', date.today())
+        
+        publication_date = st.date_input("Yayın Tarihi (Gün/Ay/Yıl)", value=default_date, key=f'pub_date_input_{rk}')
+        
+        # Show custom warning if triggered by BibTeX
+        if st.session_state.get('show_date_msg'):
+            st.info("Biptex kaydında yayının tarih bilgisi yalnızca yıl olarak yer aldığından o yılın 1 Ocak tarihi olarak belirlenmiştir. Yukarıda ilgili alandan tarih bilgisini gün ve ayı içerecek şekilde değiştirebilirsiniz")
+            # Clear it so it doesn't stick? Or keep it? Keeping it is safer until saved.
+        title = st.text_input("Başlık (Makale/Kitap/Bölüm/Proje Adı)", key=f'title_input_{rk}')
     
     # --- Dynamic Fields ---
     data = {}
@@ -170,10 +184,10 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
     
     with col2:
         if pub_type == "Makale":
-            journal_name = st.text_input("Dergi Adı", key='journal_name_input')
-            volume = st.text_input("Cilt (Volume)", key='volume_input')
-            issue = st.text_input("Sayı (Issue)", key='issue_input')
-            pages = st.text_input("Sayfa Aralığı", key='pages_input')
+            journal_name = st.text_input("Dergi Adı", key=f'journal_name_input_{rk}')
+            volume = st.text_input("Cilt (Volume)", key=f'volume_input_{rk}')
+            issue = st.text_input("Sayı (Issue)", key=f'issue_input_{rk}')
+            pages = st.text_input("Sayfa Aralığı", key=f'pages_input_{rk}')
             
             if not journal_name: missing_fields.append("Dergi Adı")
             data.update({'journal_name': journal_name, 'volume': volume, 'issue': issue, 'pages': pages})
@@ -187,18 +201,18 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
             # BUT if we load a Book Bibtex, then switch to Article, publisher_input might vanish? 
             # Yes. That is fine.
             
-            publisher = st.text_input("Yayınevi", key='publisher_input')
-            location = st.text_input("Basım Yeri (Şehir)", key='location_input')
+            publisher = st.text_input("Yayınevi", key=f'publisher_input_{rk}')
+            location = st.text_input("Basım Yeri (Şehir)", key=f'location_input_{rk}')
             
             if not publisher: missing_fields.append("Yayınevi")
             if not location: missing_fields.append("Basım Yeri")
             data.update({'publisher': publisher, 'location': location})
             
         elif pub_type == "Kitap Bölümü":
-            book_title = st.text_input("Kitap Adı", key='book_title_input')
-            publisher = st.text_input("Yayınevi", key='publisher_input')
-            location = st.text_input("Basım Yeri", key='location_input')
-            pages = st.text_input("Bölüm Sayfa Aralık", key='pages_input')
+            book_title = st.text_input("Kitap Adı", key=f'book_title_input_{rk}')
+            publisher = st.text_input("Yayınevi", key=f'publisher_input_{rk}')
+            location = st.text_input("Basım Yeri", key=f'location_input_{rk}')
+            pages = st.text_input("Bölüm Sayfa Aralık", key=f'pages_input_{rk}')
             
             st.markdown("---")
             st.markdown("**Editörler**")
@@ -237,16 +251,16 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
             })
             
         elif pub_type == "Bildiri":
-            conf_name = st.text_input("Konferans/Sempozyum Adı", key='book_title_input') # Reusing book_title logic for conf name
-            location = st.text_input("Konferans Yeri", key='location_input')
-            publisher = st.text_input("Organizasyon/Yayınlayan", key='publisher_input')
+            conf_name = st.text_input("Konferans/Sempozyum Adı", key=f'book_title_input_{rk}') # Reusing book_title logic for conf name
+            location = st.text_input("Konferans Yeri", key=f'location_input_{rk}')
+            publisher = st.text_input("Organizasyon/Yayınlayan", key=f'publisher_input_{rk}')
             
             if not conf_name: missing_fields.append("Konferans Adı")
             data.update({'book_title': conf_name, 'location': location, 'publisher': publisher})
             
         elif pub_type == "Proje":
-            funding_agency = st.text_input("Destekleyen Kurum (Örn: TÜBİTAK)", key='funding_agency_input')
-            project_status = st.text_input("Proje No / Görev", key='project_status_input')
+            funding_agency = st.text_input("Destekleyen Kurum (Örn: TÜBİTAK)", key=f'funding_agency_input_{rk}')
+            project_status = st.text_input("Proje No / Görev", key=f'project_status_input_{rk}')
             if not funding_agency: missing_fields.append("Destekleyen Kurum")
             data.update({'funding_agency': funding_agency, 'project_status': project_status})
 
@@ -278,23 +292,15 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
                 apa_citation = apa_formatter.format_apa_6(full_data)
                 st.session_state.success_msg = f"{pub_type} başarıyla kaydedildi!\n\n**APA:** {apa_citation}"
                 
-                # Clear standard input keys
-                keys_to_clear = [
-                    'title_input', 'pub_date_input', 
-                    'journal_name_input', 'volume_input', 'issue_input', 'pages_input',
-                    'publisher_input', 'location_input', 'book_title_input',
-                    'funding_agency_input', 'project_status_input',
-                    'last_bib_file'
-                ]
-                for k in keys_to_clear:
-                    if k in st.session_state:
-                        del st.session_state[k]
+                # Instead of modifying widget states, increment reset_counter
+                # This forces all widgets with {rk} suffix to recreate with new keys
+                st.session_state.reset_counter += 1
                 
-                # Clear dynamic keys (authors/editors)
-                for k in list(st.session_state.keys()):
-                    if k.startswith("surname_") or k.startswith("name_") or \
-                       k.startswith("ed_surname_") or k.startswith("ed_name_"):
-                        del st.session_state[k]
+                # Clear system keys that don't have widgets
+                if 'last_bib_file' in st.session_state:
+                    del st.session_state.last_bib_file
+                if 'show_date_msg' in st.session_state:
+                    del st.session_state.show_date_msg
                 
                 # Reset counters
                 st.session_state.num_authors = 1
