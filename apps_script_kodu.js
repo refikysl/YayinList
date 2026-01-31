@@ -10,7 +10,7 @@ function doPost(e) {
         if (!sheet) {
             sheet = doc.insertSheet('Yayinlar');
             var headers = [
-                "id", "publication_type", "authors_json", "publication_date", "title",
+                "id", "department", "publication_type", "authors_json", "publication_date", "title",
                 "journal_name", "volume", "issue", "pages", "publisher",
                 "location", "editors", "book_title", "project_status", "funding_agency",
                 "created_at"
@@ -32,6 +32,7 @@ function doPost(e) {
 
         var row = [
             newId,
+            data.department || "",
             data.publication_type || "",
             JSON.stringify(data.authors) || "[]", // Yazarları JSON string olarak sakla
             data.publication_date || "",
