@@ -69,10 +69,26 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
         )
     
     with col_t2:
+        # Handle BibTeX publication type
+        pub_types = ["Makale", "Kitap", "Kitap Bölümü", "Bildiri", "Proje"]
+        
+        # If BibTeX type exists, set it in session state for the widget
+        if 'bibtex_pub_type' in st.session_state:
+            bibtex_type = st.session_state['bibtex_pub_type']
+            if bibtex_type in pub_types:
+                # Set the widget's session state value directly
+                st.session_state['pub_type_selectbox'] = bibtex_type
+            # Clear the flag
+            del st.session_state['bibtex_pub_type']
+        
+        # Initialize if not present
+        if 'pub_type_selectbox' not in st.session_state:
+            st.session_state['pub_type_selectbox'] = "Makale"
+        
         pub_type = st.selectbox(
             "Yayın Türü",
-            ["Makale", "Kitap", "Kitap Bölümü", "Bildiri", "Proje"],
-            key='pub_type_select'
+            pub_types,
+            key='pub_type_selectbox'
         )
     
     with col_t3:
@@ -81,10 +97,11 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
             keys_to_delete = []
             for key in list(st.session_state.keys()):
                 if any(x in key for x in ['input', 'surname_', 'name_', 'ed_surname_', 'ed_name_', 
-                                          'last_bib_file', 'show_date_msg', 'success_msg']):
+                                          'last_bib_file', 'show_date_msg', 'success_msg', 'bibtex_pub_type', 'pub_type_selectbox']):
                     keys_to_delete.append(key)
             for key in keys_to_delete:
                 del st.session_state[key]
+            
             st.session_state.num_authors = 1
             st.session_state.num_editors = 1
             st.rerun()
@@ -106,10 +123,9 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
                     st.session_state.last_bib_file = file_signature
                     st.success("✅ Yüklendi!")
                     
+                    # Store publication type separately (will be used in selectbox index)
                     if 'publication_type' in parsed:
-                        types = ["Makale", "Kitap", "Kitap Bölümü", "Bildiri", "Proje"]
-                        if parsed['publication_type'] in types:
-                            st.session_state['pub_type_select'] = parsed['publication_type']
+                        st.session_state['bibtex_pub_type'] = parsed['publication_type']
                     
                     prefill_state(f'title_input_{rk}', parsed.get('title'))
                     
@@ -150,11 +166,14 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
         # Title and Date
         title = st.text_input("📝 Başlık", key=f'title_input_{rk}')
         
-        default_date = st.session_state.get(f'pub_date_input_{rk}', date.today())
-        publication_date = st.date_input("📅 Tarih", value=default_date, key=f'pub_date_input_{rk}')
+        # Initialize date in session state if not present
+        if f'pub_date_input_{rk}' not in st.session_state:
+            st.session_state[f'pub_date_input_{rk}'] = date.today()
+        
+        publication_date = st.date_input("📅 Tarih", key=f'pub_date_input_{rk}')
         
         if st.session_state.get('show_date_msg'):
-            st.caption("ℹ️ BibTeX'ten sadece yıl alındı")
+            st.info("📅 BibTeX kaydında yayının tarih bilgisi yalnızca yıl olarak yer aldığından o yılın 1 Ocak tarihi olarak belirlenmiştir. Yukarıdaki alandan tarih bilgisini gün ve ayı içerecek şekilde değiştirebilirsiniz.")
         
         # Authors (Compact)
         st.markdown("**👥 Yazarlar**")
