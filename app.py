@@ -40,212 +40,168 @@ def prefill_state(key, value):
         st.session_state[key] = value
 
 if page == "Veri Girişi (Hocalar/Asistanlar)":
-    st.title("📚 Akademik Yayın Veri Girişi")
+    st.title("📚 Yayın Veri Girişi")
     
-    # Show success message from previous run if exists
-    if 'success_msg' in st.session_state:
-        st.success(st.session_state.success_msg)
-        del st.session_state.success_msg
-    
-    # Department Selection
-    st.markdown("### 🏛️ Bölüm Seçimi")
-    department = st.radio(
-        "Bölümünüzü Seçiniz:",
-        [
-            "Siyaset Bilimi ve Kamu Yönetimi",
-            "İktisat",
-            "İşletme",
-            "Maliye",
-            "Ekonometri",
-            "Uluslararası İlişkiler"
-        ],
-        horizontal=False
-    )
-    
-    st.markdown("---")
-    
-    # --- Session State for Reset (must be before BibTeX) ---
+    # Session State
     if 'reset_counter' not in st.session_state:
         st.session_state.reset_counter = 0
     rk = str(st.session_state.reset_counter)
     
-    # New Publication Button
-    col_btn1, col_btn2 = st.columns([1, 4])
-    with col_btn1:
-        if st.button("🆕 Yeni Yayın Ekle", type="secondary", use_container_width=True):
-            # Increment reset counter to force widget recreation
+    # Success message (compact)
+    if 'success_msg' in st.session_state:
+        st.success(st.session_state.success_msg)
+        del st.session_state.success_msg
+    
+    # Top row: Department, Type, New Button
+    col_t1, col_t2, col_t3 = st.columns([2, 2, 1])
+    
+    with col_t1:
+        department = st.selectbox(
+            "Bölüm",
+            [
+                "Siyaset Bilimi ve Kamu Yönetimi",
+                "İktisat",
+                "İşletme",
+                "Maliye",
+                "Ekonometri",
+                "Uluslararası İlişkiler"
+            ]
+        )
+    
+    with col_t2:
+        pub_type = st.selectbox(
+            "Yayın Türü",
+            ["Makale", "Kitap", "Kitap Bölümü", "Bildiri", "Proje"],
+            key='pub_type_select'
+        )
+    
+    with col_t3:
+        if st.button("🆕 Yeni", type="secondary", use_container_width=True, help="Formu temizle"):
             st.session_state.reset_counter += 1
-            
-            # Clear all form-related session state
             keys_to_delete = []
             for key in list(st.session_state.keys()):
                 if any(x in key for x in ['input', 'surname_', 'name_', 'ed_surname_', 'ed_name_', 
                                           'last_bib_file', 'show_date_msg', 'success_msg']):
                     keys_to_delete.append(key)
-            
             for key in keys_to_delete:
                 del st.session_state[key]
-            
-            # Reset counters
             st.session_state.num_authors = 1
             st.session_state.num_editors = 1
-            
             st.rerun()
     
-    with col_btn2:
-        st.info("💡 Yeni bir yayın eklemek için butona basın. Tüm alanlar temizlenecektir.")
-    
-    st.markdown("---")
-    
-    # --- BibTeX Upload ---
-    with st.expander("📂 BibTeX Dosyası ile Otomatik Doldur", expanded=False):
-        uploaded_file = st.file_uploader("BibTeX (.bib) dosyanızı yükleyin", type=['bib'])
+    # BibTeX Upload (Compact Expander)
+    with st.expander("📂 BibTeX Yükle"):
+        uploaded_file = st.file_uploader("", type=['bib'], label_visibility="collapsed")
         
         if uploaded_file is None:
-            # Reset state if file is removed so re-uploading same file works
             if 'last_bib_file' in st.session_state:
                 del st.session_state.last_bib_file
-        
         else:
-             # Prevent infinite loop: Only process if it's a new file
-             # We use file.file_id or name+size as signature
-             file_signature = f"{uploaded_file.name}_{uploaded_file.size}"
-             
-             if 'last_bib_file' not in st.session_state or st.session_state.last_bib_file != file_signature:
-                 # Read string
-                 string_data = uploaded_file.getvalue().decode("utf-8")
-                 parsed = bibtex_helper.parse_bibtex(string_data)
-                 
-                 if parsed:
-                     st.session_state.last_bib_file = file_signature
-                     
-                     st.success("✅ BibTeX dosyası başarıyla okundu! Alanlar otomatik dolduruldu. Lütfen kontrol edip 'Yayını Kaydet' butonuna basın.")
-                     
-                     # 1. Type
-                     if 'publication_type' in parsed:
-                         types = ["Makale", "Kitap", "Kitap Bölümü", "Bildiri", "Proje"]
-                         if parsed['publication_type'] in types:
+            file_signature = f"{uploaded_file.name}_{uploaded_file.size}"
+            if 'last_bib_file' not in st.session_state or st.session_state.last_bib_file != file_signature:
+                string_data = uploaded_file.getvalue().decode("utf-8")
+                parsed = bibtex_helper.parse_bibtex(string_data)
+                
+                if parsed:
+                    st.session_state.last_bib_file = file_signature
+                    st.success("✅ Yüklendi!")
+                    
+                    if 'publication_type' in parsed:
+                        types = ["Makale", "Kitap", "Kitap Bölümü", "Bildiri", "Proje"]
+                        if parsed['publication_type'] in types:
                             st.session_state['pub_type_select'] = parsed['publication_type']
-                     
-                     # 2. Common - Use keys with rk suffix
-                     prefill_state(f'title_input_{rk}', parsed.get('title'))
-                     
-                     if 'publication_date' in parsed:
-                         st.session_state[f'pub_date_input_{rk}'] = parsed['publication_date']
-                         # Flag to show user-friendly message
-                         st.session_state['show_date_msg'] = True
-                     
-                     # 3. Authors
-                     if 'authors' in parsed and parsed['authors']:
-                         auths = parsed['authors']
-                         st.session_state.num_authors = len(auths)
-                         for idx, auth in enumerate(auths, 1):
-                             prefill_state(f"surname_{idx}", auth.get('surname'))
-                             prefill_state(f"name_{idx}", auth.get('name'))
-                     
-                     # 4. Editors
-                     if 'editors' in parsed and parsed['editors']:
-                         eds = parsed['editors']
-                         st.session_state.num_editors = len(eds)
-                         for idx, ed in enumerate(eds, 1):
-                             prefill_state(f"ed_surname_{idx}", ed.get('surname'))
-                             prefill_state(f"ed_name_{idx}", ed.get('name'))
-                             
-                     # 5. Specifics - Use keys with rk suffix
-                     prefill_state(f'journal_name_input_{rk}', parsed.get('journal_name'))
-                     prefill_state(f'volume_input_{rk}', parsed.get('volume'))
-                     prefill_state(f'issue_input_{rk}', parsed.get('issue'))
-                     prefill_state(f'pages_input_{rk}', parsed.get('pages'))
-                     prefill_state(f'publisher_input_{rk}', parsed.get('publisher'))
-                     prefill_state(f'location_input_{rk}', parsed.get('location'))
-                     prefill_state(f'book_title_input_{rk}', parsed.get('book_title'))
-                     
-                     # Trigger Rerun to reflect changes
-                     st.rerun()
+                    
+                    prefill_state(f'title_input_{rk}', parsed.get('title'))
+                    
+                    if 'publication_date' in parsed:
+                        st.session_state[f'pub_date_input_{rk}'] = parsed['publication_date']
+                        st.session_state['show_date_msg'] = True
+                    
+                    if 'authors' in parsed and parsed['authors']:
+                        auths = parsed['authors']
+                        st.session_state.num_authors = len(auths)
+                        for idx, auth in enumerate(auths, 1):
+                            prefill_state(f"surname_{idx}", auth.get('surname'))
+                            prefill_state(f"name_{idx}", auth.get('name'))
+                    
+                    if 'editors' in parsed and parsed['editors']:
+                        eds = parsed['editors']
+                        st.session_state.num_editors = len(eds)
+                        for idx, ed in enumerate(eds, 1):
+                            prefill_state(f"ed_surname_{idx}", ed.get('surname'))
+                            prefill_state(f"ed_name_{idx}", ed.get('name'))
+                    
+                    prefill_state(f'journal_name_input_{rk}', parsed.get('journal_name'))
+                    prefill_state(f'volume_input_{rk}', parsed.get('volume'))
+                    prefill_state(f'issue_input_{rk}', parsed.get('issue'))
+                    prefill_state(f'pages_input_{rk}', parsed.get('pages'))
+                    prefill_state(f'publisher_input_{rk}', parsed.get('publisher'))
+                    prefill_state(f'location_input_{rk}', parsed.get('location'))
+                    prefill_state(f'book_title_input_{rk}', parsed.get('book_title'))
+                    
+                    st.rerun()
+                else:
+                    st.warning("Dosya okunamadı")
     
-                 else:
-                     st.warning("Dosya ayrıştırılamadı veya boş.")
-
-
+    # Main form in 2 columns
+    col_left, col_right = st.columns([1, 1])
     
-    pub_type = st.selectbox(
-        "Yayın Türü Seçiniz", 
-        ["Makale", "Kitap", "Kitap Bölümü", "Bildiri", "Proje"],
-        key='pub_type_select'
-    )
-    
-    st.markdown("---")
-
-    # --- Authors Section ---
-    st.subheader("Yazarlar")
-    
-    authors_data = []
-    # Loop over authors
-    for i in range(1, st.session_state.num_authors + 1):
-        col_auth1, col_auth2 = st.columns(2)
-        with col_auth1:
-            surname = st.text_input(f"{i}. Yazar Soyadı", key=f"surname_{i}")
-        with col_auth2:
-            name = st.text_input(f"{i}. Yazar Adı", key=f"name_{i}")
+    with col_left:
+        # Title and Date
+        title = st.text_input("📝 Başlık", key=f'title_input_{rk}')
         
-        if surname and name:
-            authors_data.append({'surname': surname, 'name': name})
-            
-    # Controls for Authors
-    c_btn1, c_btn2, c_spacer = st.columns([1, 1, 5])
-    if c_btn1.button("➕ Yazar Ekle", key="add_auth_btn"):
-        if st.session_state.num_authors < 5:
-            st.session_state.num_authors += 1
-            st.rerun()
-            
-    if st.session_state.num_authors > 1:
-        if c_btn2.button("➖ Çıkar", key="del_auth_btn"):
-             st.session_state.num_authors -= 1
-             st.rerun()
-
-    st.markdown("---")
-    
-    # --- Common Fields ---
-    col1, col2 = st.columns(2)
-    with col1:
-        # Handling date logic
-        # Fix Streamlit Warning by ensuring 'value' matches session_state if present
-        default_date = st.session_state.get('pub_date_input', date.today())
+        default_date = st.session_state.get(f'pub_date_input_{rk}', date.today())
+        publication_date = st.date_input("📅 Tarih", value=default_date, key=f'pub_date_input_{rk}')
         
-        publication_date = st.date_input("Yayın Tarihi (Gün/Ay/Yıl)", value=default_date, key=f'pub_date_input_{rk}')
-        
-        # Show custom warning if triggered by BibTeX
         if st.session_state.get('show_date_msg'):
-            st.info("Biptex kaydında yayının tarih bilgisi yalnızca yıl olarak yer aldığından o yılın 1 Ocak tarihi olarak belirlenmiştir. Yukarıda ilgili alandan tarih bilgisini gün ve ayı içerecek şekilde değiştirebilirsiniz")
-            # Clear it so it doesn't stick? Or keep it? Keeping it is safer until saved.
-        title = st.text_input("Başlık (Makale/Kitap/Bölüm/Proje Adı)", key=f'title_input_{rk}')
-    
-    # --- Dynamic Fields ---
-    data = {}
-    missing_fields = []
-    editors_data = [] 
-    
-    with col2:
-        if pub_type == "Makale":
-            journal_name = st.text_input("Dergi Adı", key=f'journal_name_input_{rk}')
-            volume = st.text_input("Cilt (Volume)", key=f'volume_input_{rk}')
-            issue = st.text_input("Sayı (Issue)", key=f'issue_input_{rk}')
-            pages = st.text_input("Sayfa Aralığı", key=f'pages_input_{rk}')
+            st.caption("ℹ️ BibTeX'ten sadece yıl alındı")
+        
+        # Authors (Compact)
+        st.markdown("**👥 Yazarlar**")
+        authors_data = []
+        for i in range(1, st.session_state.num_authors + 1):
+            col_a1, col_a2, col_a3 = st.columns([2, 2, 0.5])
+            with col_a1:
+                surname = st.text_input("Soyad", key=f"surname_{i}", label_visibility="collapsed", placeholder=f"{i}. Soyadı")
+            with col_a2:
+                name = st.text_input("Ad", key=f"name_{i}", label_visibility="collapsed", placeholder=f"{i}. Adı")
+            with col_a3:
+                if i > 1 and st.button("✖", key=f"del_auth_{i}", help="Çıkar"):
+                    st.session_state.num_authors -= 1
+                    st.rerun()
             
-            if not journal_name: missing_fields.append("Dergi Adı")
+            if surname and name:
+                authors_data.append({'surname': surname, 'name': name})
+        
+        if st.session_state.num_authors < 5:
+            if st.button("➕ Yazar Ekle", key="add_auth"):
+                st.session_state.num_authors += 1
+                st.rerun()
+    
+    with col_right:
+        # Type-specific fields
+        data = {}
+        missing_fields = []
+        editors_data = []
+        
+        st.markdown(f"**📋 {pub_type} Bilgileri**")
+        
+        if pub_type == "Makale":
+            journal_name = st.text_input("Dergi", key=f'journal_name_input_{rk}')
+            col_v1, col_v2, col_v3 = st.columns(3)
+            with col_v1:
+                volume = st.text_input("Cilt", key=f'volume_input_{rk}')
+            with col_v2:
+                issue = st.text_input("Sayı", key=f'issue_input_{rk}')
+            with col_v3:
+                pages = st.text_input("Sayfa", key=f'pages_input_{rk}')
+            
+            if not journal_name: missing_fields.append("Dergi")
             data.update({'journal_name': journal_name, 'volume': volume, 'issue': issue, 'pages': pages})
             
         elif pub_type == "Kitap":
-            # Note: Using distinct keys if fields mean same thing (e.g. publisher) across types 
-            # might conflict if we switch types and persistent key holds value?
-            # Streamlit keys map to widgets. If widget disappears (hidden by if), state is normally cleared unless configured?
-            # Actually st clears state of disappearing widgets.
-            # So safe to re-use generic naming like 'publisher_input' IF it's semantically same. 
-            # BUT if we load a Book Bibtex, then switch to Article, publisher_input might vanish? 
-            # Yes. That is fine.
-            
             publisher = st.text_input("Yayınevi", key=f'publisher_input_{rk}')
-            location = st.text_input("Basım Yeri (Şehir)", key=f'location_input_{rk}')
+            location = st.text_input("Basım Yeri", key=f'location_input_{rk}')
             
             if not publisher: missing_fields.append("Yayınevi")
             if not location: missing_fields.append("Basım Yeri")
@@ -253,63 +209,66 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
             
         elif pub_type == "Kitap Bölümü":
             book_title = st.text_input("Kitap Adı", key=f'book_title_input_{rk}')
-            publisher = st.text_input("Yayınevi", key=f'publisher_input_{rk}')
-            location = st.text_input("Basım Yeri", key=f'location_input_{rk}')
-            pages = st.text_input("Bölüm Sayfa Aralık", key=f'pages_input_{rk}')
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                publisher = st.text_input("Yayınevi", key=f'publisher_input_{rk}')
+            with col_p2:
+                location = st.text_input("Basım Yeri", key=f'location_input_{rk}')
+            pages = st.text_input("Sayfa", key=f'pages_input_{rk}')
             
-            st.markdown("---")
-            st.markdown("**Editörler**")
-            
-            # Editors Loop
-            for j in range(1, st.session_state.num_editors + 1):
-                ce1, ce2 = st.columns(2)
-                with ce1:
-                    e_surname = st.text_input(f"{j}. Editör Soyadı", key=f"ed_surname_{j}")
-                with ce2:
-                    e_name = st.text_input(f"{j}. Editör Adı", key=f"ed_name_{j}")
+            # Editors in expander
+            with st.expander("✏️ Editörler"):
+                for j in range(1, st.session_state.num_editors + 1):
+                    col_e1, col_e2, col_e3 = st.columns([2, 2, 0.5])
+                    with col_e1:
+                        e_surname = st.text_input("Soyad", key=f"ed_surname_{j}", label_visibility="collapsed", placeholder=f"{j}. Ed. Soyadı")
+                    with col_e2:
+                        e_name = st.text_input("Ad", key=f"ed_name_{j}", label_visibility="collapsed", placeholder=f"{j}. Ed. Adı")
+                    with col_e3:
+                        if j > 1 and st.button("✖", key=f"del_ed_{j}", help="Çıkar"):
+                            st.session_state.num_editors -= 1
+                            st.rerun()
+                    
+                    if e_surname and e_name:
+                        editors_data.append({'surname': e_surname, 'name': e_name})
                 
-                if e_surname and e_name:
-                    editors_data.append({'surname': e_surname, 'name': e_name})
-            
-            ce_btn1, ce_btn2, ce_spacer = st.columns([1, 1, 5])
-            if ce_btn1.button("➕ Editör Ekle", key="add_ed_btn"):
                 if st.session_state.num_editors < 5:
-                    st.session_state.num_editors += 1
-                    st.rerun()
-            
-            if st.session_state.num_editors > 1:
-                if ce_btn2.button("➖ Çıkar", key="del_ed_btn"):
-                    st.session_state.num_editors -= 1
-                    st.rerun()
+                    if st.button("➕ Editör Ekle", key="add_ed"):
+                        st.session_state.num_editors += 1
+                        st.rerun()
             
             if not book_title: missing_fields.append("Kitap Adı")
             if not publisher: missing_fields.append("Yayınevi")
             
             data.update({
-                'book_title': book_title, 
-                'publisher': publisher, 
-                'location': location, 
+                'book_title': book_title,
+                'publisher': publisher,
+                'location': location,
                 'pages': pages,
-                'editors': editors_data 
+                'editors': editors_data
             })
             
         elif pub_type == "Bildiri":
-            conf_name = st.text_input("Konferans/Sempozyum Adı", key=f'book_title_input_{rk}') # Reusing book_title logic for conf name
-            location = st.text_input("Konferans Yeri", key=f'location_input_{rk}')
-            publisher = st.text_input("Organizasyon/Yayınlayan", key=f'publisher_input_{rk}')
+            conf_name = st.text_input("Konferans", key=f'book_title_input_{rk}')
+            col_c1, col_c2 = st.columns(2)
+            with col_c1:
+                location = st.text_input("Yer", key=f'location_input_{rk}')
+            with col_c2:
+                publisher = st.text_input("Organizasyon", key=f'publisher_input_{rk}')
             
-            if not conf_name: missing_fields.append("Konferans Adı")
+            if not conf_name: missing_fields.append("Konferans")
             data.update({'book_title': conf_name, 'location': location, 'publisher': publisher})
             
         elif pub_type == "Proje":
-            funding_agency = st.text_input("Destekleyen Kurum (Örn: TÜBİTAK)", key=f'funding_agency_input_{rk}')
-            project_status = st.text_input("Proje No / Görev", key=f'project_status_input_{rk}')
-            if not funding_agency: missing_fields.append("Destekleyen Kurum")
+            funding_agency = st.text_input("Destekleyen Kurum", key=f'funding_agency_input_{rk}')
+            project_status = st.text_input("Proje No", key=f'project_status_input_{rk}')
+            if not funding_agency: missing_fields.append("Kurum")
             data.update({'funding_agency': funding_agency, 'project_status': project_status})
-
+    
+    # Save button at bottom
     st.markdown("---")
     
-    # Show success message here too (closer to save button)
+    # Show success message here too
     if 'success_msg' in st.session_state:
         st.success(st.session_state.success_msg)
     
@@ -337,17 +296,11 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
             success = db_manager.add_publication(full_data)
             
             if success:
-                # Immediate feedback with toast notification
                 st.toast("✅ Yayın başarıyla kaydedildi!", icon="✅")
-                
-                # Store detailed success message for next run
                 apa_citation = apa_formatter.format_apa_6(full_data)
                 st.session_state.success_msg = f"**{pub_type} başarıyla veritabanına kaydedildi!**\n\n**APA Formatı:** {apa_citation}"
-                
-                # Don't auto-clear form - let user decide with "New Publication" button
-                # Just show success message
                 st.success(st.session_state.success_msg)
-                st.info("💡 Yeni bir yayın eklemek için yukarıdaki '🆕 Yeni Yayın Ekle' butonuna basın.")
+                st.info("💡 Yeni yayın eklemek için yukarıdaki '🆕 Yeni' butonuna basın.")
 
 elif page == "Raporlama (Admin)":
     st.title("📊 Yönetici Rapor Ekranı")
@@ -391,7 +344,7 @@ elif page == "Raporlama (Admin)":
         # Report Type Selection
         report_type = st.selectbox(
             "Raporlama Türü",
-            ["Tüm Yayınlar", "Yayın Türü Bazında", "Kişi Bazında"]
+            ["Bölüm ve Tür Bazında Detaylı Rapor", "Tüm Yayınlar", "Yayın Türü Bazında", "Kişi Bazında"]
         )
         
         col1, col2 = st.columns(2)
@@ -453,8 +406,60 @@ elif page == "Raporlama (Admin)":
                     if not filtered_pubs:
                         st.warning("Seçilen kriterlere uygun yayın bulunamadı.")
                     else:
+                        # NEW: Department and Type Detailed Report
+                        if report_type == "Bölüm ve Tür Bazında Detaylı Rapor":
+                            st.subheader(f"📊 Detaylı Rapor - Toplam {len(filtered_pubs)} Yayın")
+                            
+                            # Group by department first, then by type
+                            dept_groups = {}
+                            for pub in filtered_pubs:
+                                dept = pub.get('department', 'Belirtilmemiş')
+                                if dept not in dept_groups:
+                                    dept_groups[dept] = {}
+                                
+                                ptype = pub.get('publication_type', 'Diğer')
+                                if ptype not in dept_groups[dept]:
+                                    dept_groups[dept][ptype] = []
+                                dept_groups[dept][ptype].append(pub)
+                            
+                            report_text = ""
+                            
+                            # Sort departments
+                            dept_order = [
+                                "Siyaset Bilimi ve Kamu Yönetimi",
+                                "İktisat",
+                                "İşletme",
+                                "Maliye",
+                                "Ekonometri",
+                                "Uluslararası İlişkiler",
+                                "Belirtilmemiş"
+                            ]
+                            
+                            for dept in dept_order:
+                                if dept in dept_groups:
+                                    dept_total = sum(len(pubs) for pubs in dept_groups[dept].values())
+                                    st.markdown(f"### 🏛️ {dept} ({dept_total} yayın)")
+                                    report_text += f"\n## {dept} ({dept_total} yayın)\n\n"
+                                    
+                                    # Sort by publication type
+                                    for ptype in ["Makale", "Kitap", "Kitap Bölümü", "Bildiri", "Proje", "Diğer"]:
+                                        if ptype in dept_groups[dept]:
+                                            pubs = dept_groups[dept][ptype]
+                                            st.markdown(f"#### 📄 {ptype} ({len(pubs)})")
+                                            report_text += f"\n### {ptype} ({len(pubs)})\n\n"
+                                            
+                                            for idx, pub in enumerate(pubs, 1):
+                                                citation = apa_formatter.format_apa_6(pub)
+                                                st.markdown(f"**{idx}.** {citation}")
+                                                plain = citation.replace("*", "")
+                                                report_text += f"{idx}. {plain}\n\n"
+                                            
+                                            st.markdown("")  # Add spacing
+                                    
+                                    st.markdown("---")
+                        
                         # Group by publication type if "Tüm Yayınlar"
-                        if report_type == "Tüm Yayınlar":
+                        elif report_type == "Tüm Yayınlar":
                             st.subheader(f"Bulunan Yayınlar ({len(filtered_pubs)})")
                             
                             # Group by type
@@ -498,5 +503,3 @@ elif page == "Raporlama (Admin)":
                         st.markdown("---")
                         st.subheader("Dışa Aktarma")
                         st.text_area("Metin", value=report_text, height=300)
-
-
