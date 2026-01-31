@@ -42,6 +42,11 @@ def prefill_state(key, value):
 if page == "Veri Girişi (Hocalar/Asistanlar)":
     st.title("📚 Akademik Yayın Veri Girişi")
     
+    # Show success message from previous run if exists
+    if 'success_msg' in st.session_state:
+        st.success(st.session_state.success_msg)
+        del st.session_state.success_msg
+    
     # --- BibTeX Upload ---
     with st.expander("📂 BibTeX Dosyası ile Otomatik Doldur", expanded=False):
         uploaded_file = st.file_uploader("BibTeX (.bib) dosyanızı yükleyin", type=['bib'])
@@ -269,9 +274,33 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
             success = db_manager.add_publication(full_data)
             
             if success:
+                # Store success message for next run
                 apa_citation = apa_formatter.format_apa_6(full_data)
-                st.success(f"{pub_type} başarıyla kaydedildi!")
-                st.info(f"**APA Önizleme:** {apa_citation}")
+                st.session_state.success_msg = f"{pub_type} başarıyla kaydedildi!\n\n**APA:** {apa_citation}"
+                
+                # Clear standard input keys
+                keys_to_clear = [
+                    'title_input', 'pub_date_input', 
+                    'journal_name_input', 'volume_input', 'issue_input', 'pages_input',
+                    'publisher_input', 'location_input', 'book_title_input',
+                    'funding_agency_input', 'project_status_input',
+                    'last_bib_file'
+                ]
+                for k in keys_to_clear:
+                    if k in st.session_state:
+                        del st.session_state[k]
+                
+                # Clear dynamic keys (authors/editors)
+                for k in list(st.session_state.keys()):
+                    if k.startswith("surname_") or k.startswith("name_") or \
+                       k.startswith("ed_surname_") or k.startswith("ed_name_"):
+                        del st.session_state[k]
+                
+                # Reset counters
+                st.session_state.num_authors = 1
+                st.session_state.num_editors = 1
+                
+                st.rerun()
 
 elif page == "Raporlama (Admin)":
     st.title("📊 Yönetici Rapor Ekranı")
