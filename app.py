@@ -5,6 +5,44 @@ import bibtex_helper
 from datetime import date
 import os
 
+# Turkish-aware Title Case function
+def turkish_title_case(text):
+    """
+    Convert text to Title Case with Turkish character support.
+    Handles: İ/i, I/ı properly
+    Preserves: Abbreviations like "ve", "için", "ile"
+    """
+    if not text or not isinstance(text, str):
+        return text
+    
+    # Words that should remain lowercase (Turkish articles, conjunctions, prepositions)
+    lowercase_words = {'ve', 'veya', 'ile', 'için', 'de', 'da', 'den', 'dan', 'bir', 'bu', 'şu', 'o'}
+    
+    words = text.split()
+    result = []
+    
+    for i, word in enumerate(words):
+        # First word or not a lowercase exception
+        if i == 0 or word.lower() not in lowercase_words:
+            # Turkish-aware capitalize
+            if word:
+                # Handle Turkish i/İ properly
+                first_char = word[0]
+                if first_char == 'i':
+                    capitalized = 'İ' + word[1:].lower()
+                elif first_char == 'ı':
+                    capitalized = 'I' + word[1:].lower()
+                else:
+                    capitalized = first_char.upper() + word[1:].lower()
+                result.append(capitalized)
+            else:
+                result.append(word)
+        else:
+            result.append(word.lower())
+    
+    return ' '.join(result)
+
+
 # Page configuration
 st.set_page_config(page_title="Akademik Yayın Yönetim Sistemi", page_icon="📚", layout="wide")
 
@@ -50,7 +88,68 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
     # Success message (compact)
     if 'success_msg' in st.session_state:
         st.success(st.session_state.success_msg)
-        del st.session_state.success_msg
+    
+    # My Publications Search Section
+    with st.expander("🔍 Kayıtlarımı Görüntüle", expanded=False):
+        st.markdown("**Daha önce girdiğiniz yayınları görmek için soyadınızı yazın:**")
+        
+        col_search1, col_search2 = st.columns([3, 1])
+        with col_search1:
+            search_surname = st.text_input(
+                "Soyad",
+                placeholder="Örn: Yılmaz",
+                key="search_surname_input",
+                label_visibility="collapsed"
+            )
+        with col_search2:
+            search_button = st.button("🔎 Ara", use_container_width=True)
+        
+        if search_button and search_surname:
+            # Search publications by surname
+            all_pubs = db_manager.get_all_publications()
+            
+            if all_pubs:
+                # Filter by surname (case-insensitive)
+                search_lower = search_surname.lower().strip()
+                matching_pubs = []
+                
+                for pub in all_pubs:
+                    authors = pub.get('authors', [])
+                    if isinstance(authors, list):
+                        for author in authors:
+                            surname = author.get('surname', '').lower().strip()
+                            if search_lower in surname or surname in search_lower:
+                                matching_pubs.append(pub)
+                                break
+                
+                if matching_pubs:
+                    st.success(f"✅ {len(matching_pubs)} yayın bulundu:")
+                    
+                    # Group by type
+                    grouped = {}
+                    for pub in matching_pubs:
+                        ptype = pub.get('publication_type', 'Diğer')
+                        if ptype not in grouped:
+                            grouped[ptype] = []
+                        grouped[ptype].append(pub)
+                    
+                    # Display grouped publications
+                    for ptype in ["Makale", "Kitap", "Kitap Bölümü", "Bildiri", "Proje", "Diğer"]:
+                        if ptype in grouped:
+                            st.markdown(f"**{ptype} ({len(grouped[ptype])})**")
+                            for idx, pub in enumerate(grouped[ptype], 1):
+                                citation = apa_formatter.format_apa_6(pub)
+                                st.markdown(f"{idx}. {citation}")
+                            st.markdown("")
+                else:
+                    st.warning(f"'{search_surname}' soyadıyla kayıt bulunamadı.")
+            else:
+                st.info("Henüz hiç yayın kaydedilmemiş.")
+        elif search_button and not search_surname:
+            st.warning("Lütfen soyadınızı girin.")
+    
+    st.markdown("---")
+
     
     # Top row: Department, Type, New Button
     col_t1, col_t2, col_t3 = st.columns([2, 2, 1])
@@ -93,22 +192,34 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
     
     with col_t3:
         if st.button("🆕 Yeni", type="secondary", use_container_width=True, help="Formu temizle"):
+            # Increment reset counter
             st.session_state.reset_counter += 1
+            
+            # Clear ALL form-related session state keys
             keys_to_delete = []
             for key in list(st.session_state.keys()):
-                if any(x in key for x in ['input', 'surname_', 'name_', 'ed_surname_', 'ed_name_', 
-                                          'last_bib_file', 'show_date_msg', 'success_msg', 'bibtex_pub_type', 'pub_type_selectbox']):
+                # Comprehensive pattern matching
+                if any(pattern in key for pattern in [
+                    'input_', 'surname_', 'name_', 'ed_surname_', 'ed_name_',
+                    'last_bib_file', 'show_date_msg', 'success_msg', 
+                    'bibtex_pub_type', 'pub_type_selectbox', 'bibtex_uploader_',
+                    'del_auth_', 'del_ed_', 'add_auth_', 'add_ed_'
+                ]):
                     keys_to_delete.append(key)
+            
             for key in keys_to_delete:
                 del st.session_state[key]
             
+            # Reset counters
             st.session_state.num_authors = 1
             st.session_state.num_editors = 1
+            
             st.rerun()
     
     # BibTeX Upload (Compact Expander)
-    with st.expander("📂 BibTeX Yükle"):
-        uploaded_file = st.file_uploader("", type=['bib'], label_visibility="collapsed")
+    with st.expander("📂 BibTeX Yükle", expanded=False):
+        # Use reset_counter in key to force recreation
+        uploaded_file = st.file_uploader("", type=['bib'], label_visibility="collapsed", key=f'bibtex_uploader_{rk}')
         
         if uploaded_file is None:
             if 'last_bib_file' in st.session_state:
@@ -137,15 +248,15 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
                         auths = parsed['authors']
                         st.session_state.num_authors = len(auths)
                         for idx, auth in enumerate(auths, 1):
-                            prefill_state(f"surname_{idx}", auth.get('surname'))
-                            prefill_state(f"name_{idx}", auth.get('name'))
+                            prefill_state(f"surname_{idx}_{rk}", auth.get('surname'))
+                            prefill_state(f"name_{idx}_{rk}", auth.get('name'))
                     
                     if 'editors' in parsed and parsed['editors']:
                         eds = parsed['editors']
                         st.session_state.num_editors = len(eds)
                         for idx, ed in enumerate(eds, 1):
-                            prefill_state(f"ed_surname_{idx}", ed.get('surname'))
-                            prefill_state(f"ed_name_{idx}", ed.get('name'))
+                            prefill_state(f"ed_surname_{idx}_{rk}", ed.get('surname'))
+                            prefill_state(f"ed_name_{idx}_{rk}", ed.get('name'))
                     
                     prefill_state(f'journal_name_input_{rk}', parsed.get('journal_name'))
                     prefill_state(f'volume_input_{rk}', parsed.get('volume'))
@@ -181,11 +292,11 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
         for i in range(1, st.session_state.num_authors + 1):
             col_a1, col_a2, col_a3 = st.columns([2, 2, 0.5])
             with col_a1:
-                surname = st.text_input("Soyad", key=f"surname_{i}", label_visibility="collapsed", placeholder=f"{i}. Soyadı")
+                surname = st.text_input("Soyad", key=f"surname_{i}_{rk}", label_visibility="collapsed", placeholder=f"{i}. Soyadı")
             with col_a2:
-                name = st.text_input("Ad", key=f"name_{i}", label_visibility="collapsed", placeholder=f"{i}. Adı")
+                name = st.text_input("Ad", key=f"name_{i}_{rk}", label_visibility="collapsed", placeholder=f"{i}. Adı")
             with col_a3:
-                if i > 1 and st.button("✖", key=f"del_auth_{i}", help="Çıkar"):
+                if i > 1 and st.button("✖", key=f"del_auth_{i}_{rk}", help="Çıkar"):
                     st.session_state.num_authors -= 1
                     st.rerun()
             
@@ -193,7 +304,7 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
                 authors_data.append({'surname': surname, 'name': name})
         
         if st.session_state.num_authors < 5:
-            if st.button("➕ Yazar Ekle", key="add_auth"):
+            if st.button("➕ Yazar Ekle", key=f"add_auth_{rk}"):
                 st.session_state.num_authors += 1
                 st.rerun()
     
@@ -240,11 +351,11 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
                 for j in range(1, st.session_state.num_editors + 1):
                     col_e1, col_e2, col_e3 = st.columns([2, 2, 0.5])
                     with col_e1:
-                        e_surname = st.text_input("Soyad", key=f"ed_surname_{j}", label_visibility="collapsed", placeholder=f"{j}. Ed. Soyadı")
+                        e_surname = st.text_input("Soyad", key=f"ed_surname_{j}_{rk}", label_visibility="collapsed", placeholder=f"{j}. Ed. Soyadı")
                     with col_e2:
-                        e_name = st.text_input("Ad", key=f"ed_name_{j}", label_visibility="collapsed", placeholder=f"{j}. Ed. Adı")
+                        e_name = st.text_input("Ad", key=f"ed_name_{j}_{rk}", label_visibility="collapsed", placeholder=f"{j}. Ed. Adı")
                     with col_e3:
-                        if j > 1 and st.button("✖", key=f"del_ed_{j}", help="Çıkar"):
+                        if j > 1 and st.button("✖", key=f"del_ed_{j}_{rk}", help="Çıkar"):
                             st.session_state.num_editors -= 1
                             st.rerun()
                     
@@ -252,7 +363,7 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
                         editors_data.append({'surname': e_surname, 'name': e_name})
                 
                 if st.session_state.num_editors < 5:
-                    if st.button("➕ Editör Ekle", key="add_ed"):
+                    if st.button("➕ Editör Ekle", key=f"add_ed_{rk}"):
                         st.session_state.num_editors += 1
                         st.rerun()
             
@@ -303,13 +414,42 @@ if page == "Veri Girişi (Hocalar/Asistanlar)":
         elif missing_fields:
             st.error(f"Eksik alanlar: {', '.join(missing_fields)}")
         else:
+            # Normalize all text fields to Title Case
+            # Authors
+            normalized_authors = []
+            for author in authors_data:
+                normalized_authors.append({
+                    'name': turkish_title_case(author.get('name', '')),
+                    'surname': turkish_title_case(author.get('surname', ''))
+                })
+            
+            # Editors (if any)
+            normalized_editors = []
+            if 'editors' in data and data['editors']:
+                for editor in data['editors']:
+                    normalized_editors.append({
+                        'name': turkish_title_case(editor.get('name', '')),
+                        'surname': turkish_title_case(editor.get('surname', ''))
+                    })
+            
+            # Normalize other text fields
+            normalized_data = {}
+            for key, value in data.items():
+                if key == 'editors':
+                    normalized_data[key] = normalized_editors
+                elif isinstance(value, str) and key not in ['volume', 'issue', 'pages']:
+                    # Apply title case to text fields (not numbers)
+                    normalized_data[key] = turkish_title_case(value)
+                else:
+                    normalized_data[key] = value
+            
             full_data = {
                 'department': department,
                 'publication_type': pub_type,
-                'authors': authors_data,
+                'authors': normalized_authors,
                 'publication_date': publication_date.strftime("%Y-%m-%d"),
-                'title': title,
-                **data
+                'title': turkish_title_case(title),
+                **normalized_data
             }
             
             success = db_manager.add_publication(full_data)
@@ -470,8 +610,8 @@ elif page == "Raporlama (Admin)":
                                             for idx, pub in enumerate(pubs, 1):
                                                 citation = apa_formatter.format_apa_6(pub)
                                                 st.markdown(f"**{idx}.** {citation}")
-                                                plain = citation.replace("*", "")
-                                                report_text += f"{idx}. {plain}\n\n"
+                                                # Keep italics for export
+                                                report_text += f"{idx}. {citation}\n\n"
                                             
                                             st.markdown("")  # Add spacing
                                     
@@ -499,8 +639,8 @@ elif page == "Raporlama (Admin)":
                                         citation = apa_formatter.format_apa_6(pub)
                                         st.markdown(f"**{idx}.** {citation}")
                                         
-                                        plain = citation.replace("*", "")
-                                        report_text += f"{idx}. {plain}\n\n"
+                                        # Keep italics for export
+                                        report_text += f"{idx}. {citation}\n\n"
                         
                         else:
                             # Simple list for filtered reports
@@ -516,9 +656,199 @@ elif page == "Raporlama (Admin)":
                                 
                                 st.markdown(f"**{idx}. [{ptype}]** {citation}")
                                 
-                                plain = citation.replace("*", "")
-                                report_text += f"[{ptype}] {plain}\n\n"
+                                # Keep italics for export
+                                report_text += f"{idx}. [{ptype}] {citation}\n\n"
                         
                         st.markdown("---")
-                        st.subheader("Dışa Aktarma")
-                        st.text_area("Metin", value=report_text, height=300)
+                        st.subheader("📥 Dışa Aktarma")
+                        
+                        col_exp1, col_exp2 = st.columns(2)
+                        
+                        with col_exp1:
+                            # Word Export
+                            try:
+                                from docx import Document
+                                from docx.shared import Pt, RGBColor, Inches
+                                from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+                                import io
+                                import re
+                                
+                                # Create Word document
+                                doc = Document()
+                                
+                                # Add title
+                                title_para = doc.add_heading('Akademik Yayın Raporu', 0)
+                                title_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                                
+                                # Helper function to add formatted paragraph with italics
+                                def add_formatted_paragraph(doc, text, style='Normal'):
+                                    """Add paragraph with markdown italics converted to actual italics"""
+                                    para = doc.add_paragraph(style=style)
+                                    
+                                    # Split by italic markers
+                                    parts = re.split(r'(\*[^*]+\*)', text)
+                                    
+                                    for part in parts:
+                                        if part.startswith('*') and part.endswith('*'):
+                                            # This is italic text
+                                            run = para.add_run(part[1:-1])
+                                            run.italic = True
+                                        elif part:
+                                            # Normal text
+                                            para.add_run(part)
+                                    
+                                    return para
+                                
+                                # Add report content
+                                for line in report_text.split('\n'):
+                                    if line.strip():
+                                        if line.startswith('##'):
+                                            doc.add_heading(line.replace('##', '').strip(), level=1)
+                                        elif line.startswith('###'):
+                                            doc.add_heading(line.replace('###', '').strip(), level=2)
+                                        else:
+                                            add_formatted_paragraph(doc, line.strip())
+                                
+                                # Save to bytes
+                                docx_buffer = io.BytesIO()
+                                doc.save(docx_buffer)
+                                docx_buffer.seek(0)
+                                
+                                st.download_button(
+                                    label="📄 Word İndir (.docx)",
+                                    data=docx_buffer,
+                                    file_name=f"yayin_raporu_{start_date.strftime('%Y%m%d')}.docx",
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    use_container_width=True
+                                )
+                            except ImportError:
+                                st.warning("Word export için 'python-docx' paketi gerekli. Lütfen yükleyin: pip install python-docx")
+                        
+                        with col_exp2:
+                            # PDF Export with Turkish support
+                            try:
+                                from reportlab.lib.pagesizes import A4
+                                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                                from reportlab.lib.units import cm
+                                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+                                from reportlab.lib.enums import TA_CENTER
+                                from reportlab.pdfbase import pdfmetrics
+                                from reportlab.pdfbase.ttfonts import TTFont
+                                import io
+                                import re
+                                import os
+                                
+                                # Try to register a Turkish-compatible font
+                                font_registered = False
+                                font_name = 'Helvetica'
+                                
+                                # Try Windows fonts
+                                windows_fonts = [
+                                    ('Arial', 'arial.ttf'),
+                                    ('Times', 'times.ttf'),
+                                    ('Calibri', 'calibri.ttf')
+                                ]
+                                
+                                for fname, ffile in windows_fonts:
+                                    try:
+                                        font_path = os.path.join('C:\\Windows\\Fonts', ffile)
+                                        if os.path.exists(font_path):
+                                            pdfmetrics.registerFont(TTFont(fname, font_path))
+                                            font_name = fname
+                                            font_registered = True
+                                            break
+                                    except:
+                                        continue
+                                
+                                # Create PDF
+                                pdf_buffer = io.BytesIO()
+                                doc_pdf = SimpleDocTemplate(pdf_buffer, pagesize=A4, 
+                                                           leftMargin=2*cm, rightMargin=2*cm,
+                                                           topMargin=2*cm, bottomMargin=2*cm)
+                                story = []
+                                styles = getSampleStyleSheet()
+                                
+                                # Custom styles
+                                title_style = ParagraphStyle(
+                                    'CustomTitle',
+                                    parent=styles['Heading1'],
+                                    fontSize=18,
+                                    fontName=font_name,
+                                    textColor='#1f77b4',
+                                    spaceAfter=30,
+                                    alignment=TA_CENTER
+                                )
+                                
+                                heading1_style = ParagraphStyle(
+                                    'CustomH1',
+                                    parent=styles['Heading1'],
+                                    fontSize=14,
+                                    fontName=font_name,
+                                    spaceAfter=12
+                                )
+                                
+                                heading2_style = ParagraphStyle(
+                                    'CustomH2',
+                                    parent=styles['Heading2'],
+                                    fontSize=12,
+                                    fontName=font_name,
+                                    spaceAfter=10
+                                )
+                                
+                                normal_style = ParagraphStyle(
+                                    'CustomNormal',
+                                    parent=styles['Normal'],
+                                    fontSize=10,
+                                    fontName=font_name,
+                                    spaceAfter=6,
+                                    leading=14
+                                )
+                                
+                                # Add title
+                                story.append(Paragraph("Akademik Yayın Raporu", title_style))
+                                story.append(Spacer(1, 0.5*cm))
+                                
+                                # Helper to convert markdown italics to HTML and escape special chars
+                                def markdown_to_html(text):
+                                    """Convert markdown italics to HTML italics and escape XML chars"""
+                                    # Escape XML special characters
+                                    text = text.replace('&', '&amp;')
+                                    text = text.replace('<', '&lt;')
+                                    text = text.replace('>', '&gt;')
+                                    # Replace *text* with <i>text</i>
+                                    text = re.sub(r'\*([^*]+)\*', r'<i>\1</i>', text)
+                                    return text
+                                
+                                # Add content
+                                for line in report_text.split('\n'):
+                                    if line.strip():
+                                        try:
+                                            if line.startswith('##'):
+                                                clean_line = line.replace('##', '').strip()
+                                                story.append(Paragraph(clean_line, heading1_style))
+                                            elif line.startswith('###'):
+                                                clean_line = line.replace('###', '').strip()
+                                                story.append(Paragraph(clean_line, heading2_style))
+                                            else:
+                                                # Convert markdown italics to HTML
+                                                formatted_line = markdown_to_html(line.strip())
+                                                story.append(Paragraph(formatted_line, normal_style))
+                                            story.append(Spacer(1, 0.2*cm))
+                                        except Exception as line_error:
+                                            # Skip problematic lines
+                                            pass
+                                
+                                doc_pdf.build(story)
+                                pdf_buffer.seek(0)
+                                
+                                st.download_button(
+                                    label="📕 PDF İndir (.pdf)",
+                                    data=pdf_buffer,
+                                    file_name=f"yayin_raporu_{start_date.strftime('%Y%m%d')}.pdf",
+                                    mime="application/pdf",
+                                    use_container_width=True
+                                )
+                            except Exception as e:
+                                st.error(f"PDF oluşturulurken hata: {str(e)}")
+                                st.warning("PDF export için 'reportlab' paketi gerekli.")
+

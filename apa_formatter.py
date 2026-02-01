@@ -40,12 +40,9 @@ def format_apa_6(data):
         author_str = "" 
     elif len(formatted_authors) == 1:
         author_str = formatted_authors[0]
-    elif len(formatted_authors) == 2:
-        author_str = f"{formatted_authors[0]} & {formatted_authors[1]}"
     else:
-        # A, B, & C
-        all_but_last = ", ".join(formatted_authors[:-1])
-        author_str = f"{all_but_last}, & {formatted_authors[-1]}"
+        # All authors separated by commas (no & or ;)
+        author_str = ", ".join(formatted_authors)
         
     if author_str and not author_str.endswith('.'):
         author_str += "."
@@ -82,10 +79,11 @@ def format_apa_6(data):
     elif len(formatted_editors) == 1:
         editor_str = f"{formatted_editors[0]} (Ed.)"
     elif len(formatted_editors) == 2:
-        editor_str = f"{formatted_editors[0]} & {formatted_editors[1]} (Eds.)"
+        editor_str = f"{formatted_editors[0]}, {formatted_editors[1]} (Eds.)"
     else:
-        all_but_last = ", ".join(formatted_editors[:-1])
-        editor_str = f"{all_but_last}, & {formatted_editors[-1]} (Eds.)"
+        # All editors separated by commas (no &)
+        all_editors = ", ".join(formatted_editors)
+        editor_str = f"{all_editors} (Eds.)"
 
 
     # --- Year Parsing ---
@@ -122,8 +120,11 @@ def format_apa_6(data):
             container += f"*{volume}*"
         if issue: container += f"({issue})"
         if pages: 
-            if container: container += ", "
-            container += f"{pages}."
+            # Use colon after issue instead of comma
+            if container: container += ": "
+            # Normalize double hyphens to single hyphen
+            normalized_pages = pages.replace('--', '-')
+            container += f"{normalized_pages}."
         elif container:
              container = ensure_dot(container)
              
@@ -167,7 +168,10 @@ def format_apa_6(data):
         container = "In "
         if editor_str: container += f"{editor_str}, "
         if book_title: container += f"*{book_title}*"
-        if pages: container += f" (pp. {pages})"
+        if pages:
+            # Normalize double hyphens to single hyphen
+            normalized_pages = pages.replace('--', '-')
+            container += f" (pp. {normalized_pages})"
         
         parts.append(ensure_dot(container))
         

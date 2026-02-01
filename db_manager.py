@@ -126,3 +126,10 @@ def get_publications(start_date=None, end_date=None):
     except Exception as e:
         st.error(f"Bağlantı Hatası: {str(e)}")
         return []
+
+def get_all_publications():
+    """
+    Alias for get_publications() - fetches all publications without date filtering.
+    """
+    return get_publications()
+
